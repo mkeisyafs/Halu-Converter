@@ -606,6 +606,42 @@ export function convertCBStoTemplate(text: string): string {
 }
 
 /**
+ * Convert CBS `{{keyword::arg1::arg2}}` patterns inside Lua code to HaluAI template syntax.
+ * 
+ * Unlike `convertCBStoTemplate`, this does NOT attempt block-level conversions
+ * (#if/#each/#when) — it only converts simple `{{keyword::args}}` expressions.
+ * This is safe for Lua code where `{{button::◉::handler}}` appears inside
+ * string literals that will be output as HTML and processed by the template parser.
+ */
+export function convertCBSInLuaCode(code: string): string {
+    if (!code || !code.includes('{{')) return code;
+
+    // Match {{...}} patterns globally
+    return code.replace(/\{\{((?:[^{}]|\{(?!\{)|\}(?!\}))*)\}\}/g, (_match, inner: string) => {
+        const trimmed = inner.trim();
+        if (!trimmed) return _match;
+
+        // Skip comments
+        if (trimmed.startsWith('//')) return '';
+
+        // Skip block structures — leave them as-is in Lua code
+        if (trimmed.startsWith('#') || trimmed.startsWith('/') || trimmed === 'else' || trimmed === ':else') {
+            return _match;
+        }
+
+        // Skip well-known RisuAI template variables that should stay as {{char}}, {{user}}
+        // These are handled at runtime by both RisuAI and HaluAI
+        const lower = trimmed.toLowerCase();
+        if (lower === 'char' || lower === 'user' || lower === 'char_name' || lower === 'user_name') {
+            return _match; // Keep as-is — handled by Lua runtime or template parser
+        }
+
+        // Convert simple expressions: {{keyword::arg1::arg2}} → ${keyword('arg1', 'arg2')}
+        return convertSimpleExpression(trimmed);
+    });
+}
+
+/**
  * Convert CBS in all string fields of an object (recursive).
  */
 export function convertCBSInObject(obj: any): any {

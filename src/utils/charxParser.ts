@@ -12,7 +12,7 @@
 import { Unzip, UnzipInflate } from 'fflate';
 import type { CharacterData, ExtractedAsset, RegexScript, LoreEntry, TriggerScript, TriggerCondition, TriggerEffect } from './types';
 import { readModule } from './modules';
-import { convertCBStoTemplate } from './cbsConverter';
+import { convertCBStoTemplate, convertCBSInLuaCode } from './cbsConverter';
 
 // ─── Helpers ───
 
@@ -92,28 +92,17 @@ function mapLoreEntry(entry: any, index: number): LoreEntry {
 
 function mapTriggerScript(script: any): TriggerScript {
     const conditions: TriggerCondition[] = (script.conditions || []).map((c: any) => ({
+        ...c,
         type: c.type || 'var',
-        var: c.var,
-        value: c.value,
-        operator: c.operator,
-        type2: c.type2,
-        depth: c.depth,
     }));
 
+    // Spread all fields to preserve type-specific properties
+    // (e.g. source1/source2 for v2ConcatString, index/indexType for array ops,
+    //  display/displayType for v2GetAlertInput, start/end for v2SliceArrayVar, etc.)
     const effects: TriggerEffect[] = (script.effect || []).map((e: any) => ({
+        ...e,
         type: e.type || 'v2SetVar',
         indent: e.indent || 0,
-        var: e.var,
-        value: e.value,
-        valueType: e.valueType,
-        operator: e.operator,
-        source: e.source,
-        sourceType: e.sourceType,
-        target: e.target,
-        targetType: e.targetType,
-        condition: e.condition,
-        outputVar: e.outputVar,
-        code: e.code,
     }));
 
     return {
@@ -312,6 +301,8 @@ function normalizeCharacterData(raw: any): CharacterData {
                 if (ts.effect) {
                     for (const eff of ts.effect) {
                         if (eff.type === 'triggerlua' && eff.code) {
+                            // Convert CBS patterns ({{button::}}, {{getvar::}}, etc.) inside Lua code
+                            eff.code = convertCBSInLuaCode(eff.code);
                             eff.code = risuToHalu(eff.code);
                         }
                     }
@@ -354,7 +345,7 @@ function normalizeCharacterData(raw: any): CharacterData {
         if (regexScripts) {
             for (const script of regexScripts) {
                 if (script.outPattern) script.outPattern = risuToHalu(convertCBStoTemplate(script.outPattern));
-                if (script.inPattern) script.inPattern = risuToHalu(script.inPattern);
+                if (script.inPattern) script.inPattern = risuToHalu(convertCBStoTemplate(script.inPattern));
             }
         }
 
@@ -586,6 +577,9 @@ export async function parseCharacterCHARX(file: File): Promise<CharacterData | n
             const keyFromValue = a.value.replace(/\.[^.]+$/, '');
             lookupByKey.set(keyFromValue, a);
         }
+        console.log(`[RtoH CHARX] Built lookup maps: byValue=${lookupByValue.size}, byKey=${lookupByKey.size}`);
+        console.log(`[RtoH CHARX] Sample keys:`, [...lookupByKey.keys()].slice(0, 10));
+        console.log(`[RtoH CHARX] Sample values:`, [...lookupByValue.keys()].slice(0, 10));
 
         function findAsset(ref: string): ExtractedAsset | null {
             let stripped = ref;
@@ -602,7 +596,9 @@ export async function parseCharacterCHARX(file: File): Promise<CharacterData | n
 
         // Update asset names from card.json references
         const risuExt = cardData?.data?.extensions?.risuai;
+        let mapped = 0, failed = 0;
         if (risuExt?.additionalAssets && Array.isArray(risuExt.additionalAssets)) {
+            console.log(`[RtoH CHARX] additionalAssets count: ${risuExt.additionalAssets.length}`);
             for (const asset of risuExt.additionalAssets) {
                 if (!Array.isArray(asset) || asset.length < 2) continue;
                 const descriptiveName = asset[0];
@@ -612,8 +608,38 @@ export async function parseCharacterCHARX(file: File): Promise<CharacterData | n
                 const foundAsset = findAsset(ref);
                 if (foundAsset && descriptiveName !== foundAsset.value) {
                     foundAsset.value = descriptiveName;
+                    mapped++;
+                } else if (!foundAsset) {
+                    failed++;
+                    if (failed <= 10) {
+                        console.warn(`[RtoH CHARX] v2 FAILED to find asset for ref: "${ref.substring(0, 60)}" → "${descriptiveName}"`);
+                    }
                 }
             }
+            console.log(`[RtoH CHARX] v2 Asset name mapping: ${mapped} mapped, ${failed} failed`);
+        }
+
+        // Also resolve v3 assets: data.assets = [{type, uri, name, ext}, ...]
+        if (cardData?.data?.assets && Array.isArray(cardData.data.assets)) {
+            let v3Mapped = 0, v3Failed = 0;
+            console.log(`[RtoH CHARX] v3 data.assets count: ${cardData.data.assets.length}`);
+            for (const asset of cardData.data.assets) {
+                if (!asset?.uri || typeof asset.uri !== 'string') continue;
+                if (asset.uri.startsWith('data:') || asset.uri === 'ccdefault:') continue;
+                const descriptiveName = asset.name;
+                if (!descriptiveName) continue;
+                const foundAsset = findAsset(asset.uri);
+                if (foundAsset && descriptiveName !== foundAsset.value) {
+                    foundAsset.value = descriptiveName;
+                    v3Mapped++;
+                } else if (!foundAsset) {
+                    v3Failed++;
+                    if (v3Failed <= 10) {
+                        console.warn(`[RtoH CHARX] v3 FAILED to find asset for uri: "${asset.uri.substring(0, 60)}" → "${descriptiveName}"`);
+                    }
+                }
+            }
+            console.log(`[RtoH CHARX] v3 Asset name mapping: ${v3Mapped} mapped, ${v3Failed} failed`);
         }
 
         // Normalize

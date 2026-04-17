@@ -21,7 +21,7 @@ function uint8ArrayToBase64(data: Uint8Array): string {
     return btoa(binary);
 }
 
-export async function buildHaluFile(data: CharacterData): Promise<Uint8Array> {
+export async function buildskizoFile(data: CharacterData): Promise<Uint8Array> {
     const character: any = {
         name: data.name || '',
         bio_character: data.bio_character || '',
@@ -70,9 +70,9 @@ export async function buildHaluFile(data: CharacterData): Promise<Uint8Array> {
             try {
                 const rawBytes = base64ToUint8Array(asset.base64);
                 const encoded = await encodeHPack(rawBytes);
-                const haluName = asset.value.replace(/\.risum$/i, '.hai');
+                const skizoName = asset.value.replace(/\.risum$/i, '.hai');
                 encodedAssets.push({
-                    name: haluName,
+                    name: skizoName,
                     mimeType: asset.mimeType,
                     data: uint8ArrayToBase64(encoded),
                 });
@@ -82,7 +82,7 @@ export async function buildHaluFile(data: CharacterData): Promise<Uint8Array> {
 
     return new TextEncoder().encode(JSON.stringify({
         version: 1,
-        format: 'halu',
+        format: 'skizo',
         character,
         assets: encodedAssets,
     }));

@@ -7,9 +7,9 @@
  *   - No @/ path aliases — all local imports
  *   - Synchronous RPack decode (not async)
  *   - Includes CBS → Template conversion
- *   - Full risu- → halu- conversion
+ *   - Full risu- → skizo- conversion
  */
-import { Unzip, UnzipInflate } from 'fflate';
+import { Unzip, UnzipInflate, decompressSync } from 'fflate';
 import type { CharacterData, ExtractedAsset, RegexScript, LoreEntry, TriggerScript, TriggerCondition, TriggerEffect } from './types';
 import { readModule } from './modules';
 import { convertCBStoTemplate, convertCBSInLuaCode } from './cbsConverter';
@@ -17,19 +17,19 @@ import { convertCBStoTemplate, convertCBSInLuaCode } from './cbsConverter';
 // ─── Helpers ───
 
 /**
- * Convert RisuAI identifiers to HaluAI equivalents
+ * Convert RisuAI identifiers to SkizoAI equivalents
  */
-function risuToHalu(text: string): string {
+function risuToskizo(text: string): string {
     if (!text || !text.includes('risu-')) return text;
     return text
-        .replace(/\brisu-trigger\b/g, 'halu-trigger')
-        .replace(/\brisu-btn\b/g, 'halu-btn')
-        .replace(/\brisu-ctrl\b/g, 'halu-ctrl')
-        .replace(/\brisu-mark\b/g, 'halu-mark')
-        .replace(/\brisu-id\b/g, 'halu-id')
-        .replace(/\brisu-inlay-image\b/g, 'halu-inlay-image')
-        .replace(/\brisu-style\b/g, 'halu-style')
-        .replace(/\brisu-file\b/g, 'halu-file');
+        .replace(/\brisu-trigger\b/g, 'skizo-trigger')
+        .replace(/\brisu-btn\b/g, 'skizo-btn')
+        .replace(/\brisu-ctrl\b/g, 'skizo-ctrl')
+        .replace(/\brisu-mark\b/g, 'skizo-mark')
+        .replace(/\brisu-id\b/g, 'skizo-id')
+        .replace(/\brisu-inlay-image\b/g, 'skizo-inlay-image')
+        .replace(/\brisu-style\b/g, 'skizo-style')
+        .replace(/\brisu-file\b/g, 'skizo-file');
 }
 
 function getValueCaseInsensitive(obj: any, candidates: string[] | string): any {
@@ -303,7 +303,7 @@ function normalizeCharacterData(raw: any): CharacterData {
                         if (eff.type === 'triggerlua' && eff.code) {
                             // Convert CBS patterns ({{button::}}, {{getvar::}}, etc.) inside Lua code
                             eff.code = convertCBSInLuaCode(eff.code);
-                            eff.code = risuToHalu(eff.code);
+                            eff.code = risuToskizo(eff.code);
                         }
                     }
                 }
@@ -330,22 +330,22 @@ function normalizeCharacterData(raw: any): CharacterData {
         const advUtilityBot = getValueCaseInsensitive(risuExt, ['utilityBot', 'utility_bot']) ?? undefined;
         const advEscapeOutput = getValueCaseInsensitive(risuExt, ['escapeOutput', 'escape_output']) ?? undefined;
 
-        // Convert CBS → Template → risu→halu
-        const convertedInitialMsg = risuToHalu(convertCBStoTemplate(base.first_mes || ''));
-        const convertedPersonality = risuToHalu(convertCBStoTemplate(base.description || base.personality || ''));
-        const convertedScenario = risuToHalu(convertCBStoTemplate(base.scenario || ''));
-        const convertedMsgExample = risuToHalu(convertCBStoTemplate(base.mes_example || ''));
-        const convertedBgEmbed = backgroundEmbedding ? risuToHalu(convertCBStoTemplate(backgroundEmbedding)) : undefined;
-        const convertedGlobalNote = globalNoteReplacement ? risuToHalu(convertCBStoTemplate(globalNoteReplacement)) : undefined;
+        // Convert CBS → Template → risu→skizo
+        const convertedInitialMsg = risuToskizo(convertCBStoTemplate(base.first_mes || ''));
+        const convertedPersonality = risuToskizo(convertCBStoTemplate(base.description || base.personality || ''));
+        const convertedScenario = risuToskizo(convertCBStoTemplate(base.scenario || ''));
+        const convertedMsgExample = risuToskizo(convertCBStoTemplate(base.mes_example || ''));
+        const convertedBgEmbed = backgroundEmbedding ? risuToskizo(convertCBStoTemplate(backgroundEmbedding)) : undefined;
+        const convertedGlobalNote = globalNoteReplacement ? risuToskizo(convertCBStoTemplate(globalNoteReplacement)) : undefined;
         const convertedAltGreetings = Array.isArray(alternateGreetings)
-            ? alternateGreetings.map((g: string) => risuToHalu(convertCBStoTemplate(g)))
+            ? alternateGreetings.map((g: string) => risuToskizo(convertCBStoTemplate(g)))
             : undefined;
 
         // Convert CBS in regex scripts
         if (regexScripts) {
             for (const script of regexScripts) {
-                if (script.outPattern) script.outPattern = risuToHalu(convertCBStoTemplate(script.outPattern));
-                if (script.inPattern) script.inPattern = risuToHalu(convertCBStoTemplate(script.inPattern));
+                if (script.outPattern) script.outPattern = risuToskizo(convertCBStoTemplate(script.outPattern));
+                if (script.inPattern) script.inPattern = risuToskizo(convertCBStoTemplate(script.inPattern));
             }
         }
 
@@ -368,10 +368,10 @@ function normalizeCharacterData(raw: any): CharacterData {
             character_version: advCharacterVersion,
             nickname: advNickname,
             depth_prompt_depth: advDepthPromptDepth,
-            depth_prompt_text: advDepthPromptText ? risuToHalu(convertCBStoTemplate(advDepthPromptText)) : undefined,
-            translator_note: advTranslatorNote ? risuToHalu(convertCBStoTemplate(advTranslatorNote)) : undefined,
-            system_prompt: advSystemPrompt ? risuToHalu(convertCBStoTemplate(advSystemPrompt)) : undefined,
-            additional_text: advAdditionalText ? risuToHalu(convertCBStoTemplate(advAdditionalText)) : undefined,
+            depth_prompt_text: advDepthPromptText ? risuToskizo(convertCBStoTemplate(advDepthPromptText)) : undefined,
+            translator_note: advTranslatorNote ? risuToskizo(convertCBStoTemplate(advTranslatorNote)) : undefined,
+            system_prompt: advSystemPrompt ? risuToskizo(convertCBStoTemplate(advSystemPrompt)) : undefined,
+            additional_text: advAdditionalText ? risuToskizo(convertCBStoTemplate(advAdditionalText)) : undefined,
             low_level_access: advLowLevelAccess,
             hide_chat_icon: advHideChatIcon,
             utility_bot: advUtilityBot,
@@ -685,13 +685,27 @@ export async function parseCharacterPNG(file: File): Promise<CharacterData | nul
 
         if (type === 'IEND') break;
 
-        if (type === 'tEXt') {
+        if (type === 'tEXt' || type === 'zTXt') {
             let key = '';
             let value = '';
-            for (let i = 0; i < Math.min(70, chunkData.length); i++) {
+            // PNG spec: keys are up to 79 bytes, followed by a null separator
+            const maxKeySearch = Math.min(80, chunkData.length);
+            for (let i = 0; i < maxKeySearch; i++) {
                 if (chunkData[i] === 0) {
                     key = new TextDecoder().decode(chunkData.slice(0, i));
-                    value = new TextDecoder().decode(chunkData.slice(i + 1));
+                    if (type === 'tEXt') {
+                        value = new TextDecoder().decode(chunkData.slice(i + 1));
+                    } else {
+                        // zTXt: byte at i+1 is compression method (0 = deflate),
+                        // followed by the compressed payload
+                        try {
+                            const compressed = chunkData.slice(i + 2);
+                            const decompressed = decompressSync(compressed);
+                            value = new TextDecoder().decode(decompressed);
+                        } catch {
+                            // skip unreadable compressed chunks
+                        }
+                    }
                     break;
                 }
             }

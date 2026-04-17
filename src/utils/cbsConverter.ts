@@ -122,7 +122,7 @@ function stripTemplateWrappers(text: string): string {
 // ─── Expression Converter ──────────────────────────────────
 
 /**
- * Convert a simple CBS inner expression to HaluAI template.
+ * Convert a simple CBS inner expression to SkizoAI template.
  * Called after nested `{{ }}` are already resolved.
  */
 function convertSimpleExpression(inner: string): string {
@@ -514,7 +514,7 @@ function handleHashIfBlock(
 // ─── Main Converter ────────────────────────────────────────
 
 /**
- * Convert all RisuAI CBS syntax in text to HaluAI template syntax.
+ * Convert all RisuAI CBS syntax in text to SkizoAI template syntax.
  *
  * Uses a depth-tracking parser for nested `{{ }}` and converts
  * block structures (`#if`/`/if`/`else`/`#each`/`/each`) into
@@ -606,7 +606,7 @@ export function convertCBStoTemplate(text: string): string {
 }
 
 /**
- * Convert CBS `{{keyword::arg1::arg2}}` patterns inside Lua code to HaluAI template syntax.
+ * Convert CBS `{{keyword::arg1::arg2}}` patterns inside Lua code to SkizoAI template syntax.
  * 
  * Unlike `convertCBStoTemplate`, this does NOT attempt block-level conversions
  * (#if/#each/#when) — it only converts simple `{{keyword::args}}` expressions.
@@ -630,7 +630,7 @@ export function convertCBSInLuaCode(code: string): string {
         }
 
         // Skip well-known RisuAI template variables that should stay as {{char}}, {{user}}
-        // These are handled at runtime by both RisuAI and HaluAI
+        // These are handled at runtime by both RisuAI and SkizoAI
         const lower = trimmed.toLowerCase();
         if (lower === 'char' || lower === 'user' || lower === 'char_name' || lower === 'user_name') {
             return _match; // Keep as-is — handled by Lua runtime or template parser

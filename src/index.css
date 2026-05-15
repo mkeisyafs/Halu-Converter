@@ -3,17 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 8%;
-  --foreground: 0 0% 95%;
-  --card: 0 0% 10%;
-  --card-foreground: 0 0% 95%;
-  --primary: 260 60% 55%;
-  --primary-foreground: 0 0% 100%;
-  --muted: 0 0% 15%;
-  --muted-foreground: 0 0% 60%;
-  --accent: 260 50% 45%;
-  --accent-foreground: 0 0% 100%;
-  --border: 0 0% 16%;
+  color-scheme: dark;
 }
 
 * {
@@ -22,24 +12,78 @@
   padding: 0;
 }
 
+html, body, #root {
+  min-height: 100%;
+  background: #07070b;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  min-height: 100vh;
+  color: #e8e8ee;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
-/* Scrollbar styling */
+/* Subtle ambient gradient backdrop — handled by .app-bg in JSX */
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: hsl(0 0% 25%);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Animations */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -40px) scale(1.05); }
+  66% { transform: translate(-20px, 30px) scale(0.95); }
+}
+
+@keyframes shine {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-up { animation: fade-up 0.4s ease-out both; }
+.float-slow { animation: float-slow 18s ease-in-out infinite; }
+
+.shine-text {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.7) 0%,
+    rgba(255,255,255,1) 50%,
+    rgba(255,255,255,0.7) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 6s linear infinite;
+}
+
+/* Selection */
+::selection {
+  background: rgba(168, 85, 247, 0.35);
+  color: #fff;
 }

@@ -341,11 +341,11 @@ function normalizeCharacterData(raw: any): CharacterData {
             ? alternateGreetings.map((g: string) => risuToskizo(convertCBStoTemplate(g)))
             : undefined;
 
-        // Convert CBS in regex scripts
+        // Convert CBS in regex scripts (outPattern only; inPattern is a regex pattern)
         if (regexScripts) {
             for (const script of regexScripts) {
                 if (script.outPattern) script.outPattern = risuToskizo(convertCBStoTemplate(script.outPattern));
-                if (script.inPattern) script.inPattern = risuToskizo(convertCBStoTemplate(script.inPattern));
+                if (script.inPattern) script.inPattern = risuToskizo(script.inPattern);
             }
         }
 

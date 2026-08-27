@@ -192,7 +192,7 @@ function handleIfBlock(
 
             if (tag.startsWith('#if') || tag.startsWith('#each') || tag.startsWith('#when') || tag.startsWith('#func') || tag.startsWith('#escape') || tag.startsWith('#pure')) {
                 depth++;
-            } else if (tag === '/if' || tag === '/') {
+            } else if (tag === '/if') {
                 depth--;
                 if (depth === 0) {
                     // Found matching /if
@@ -219,7 +219,7 @@ function handleIfBlock(
                     if (elseText !== null) {
                         const convertedElse = convertCBStoTemplate(elseText);
                         return {
-                            output: `\${if(${condition}){${convertedBody}} else {${convertedElse}}}`,
+                            output: `\${if(${condition}){${convertedBody}}}\${if(not(${condition})){${convertedElse}}}`,
                             endPos,
                         };
                     }
@@ -229,7 +229,7 @@ function handleIfBlock(
                         endPos,
                     };
                 }
-            } else if (tag === '/each' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay') {
+            } else if (tag === '/each' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
             } else if ((tag === 'else' || tag === ':else') && depth === 1) {
                 elseStart = scanPos;
@@ -260,7 +260,7 @@ function handleEachBlock(
     // Parse loop variable: "LIST as VAR" or "LIST VAR" (compatibility)
     let listRaw = rawAfterEach;
     let loopVar = 'item';
-    const asMatch = rawAfterEach.match(/^([\s\S]+?)\s+as\s+(\w+)$/);
+    const asMatch = rawAfterEach.match(/^([\s\S]+?)\s+as\s+(\w+)$/i);
     if (asMatch) {
         listRaw = asMatch[1].trim();
         loopVar = asMatch[2];
@@ -268,9 +268,10 @@ function handleEachBlock(
         const lastSpace = rawAfterEach.lastIndexOf(' ');
         if (lastSpace > 0) {
             const potentialVar = rawAfterEach.substring(lastSpace + 1).trim();
-            // Only treat as variable if it's a simple identifier (no braces)
-            if (/^\w+$/.test(potentialVar) && !potentialVar.includes('{')) {
-                listRaw = rawAfterEach.substring(0, lastSpace).trim();
+            const prefix = rawAfterEach.substring(0, lastSpace).trim();
+            // Only treat as variable if it's a simple identifier (no braces/quotes/parens) and prefix is non-empty
+            if (/^[a-zA-Z_]\w*$/.test(potentialVar) && !prefix.endsWith(',') && !prefix.endsWith('(') && !potentialVar.includes('{')) {
+                listRaw = prefix;
                 loopVar = potentialVar;
             }
         }
@@ -288,7 +289,7 @@ function handleEachBlock(
 
             if (tag.startsWith('#if') || tag.startsWith('#each') || tag.startsWith('#when') || tag.startsWith('#func') || tag.startsWith('#escape') || tag.startsWith('#pure')) {
                 depth++;
-            } else if (tag === '/each' || tag === '/') {
+            } else if (tag === '/each') {
                 depth--;
                 if (depth === 0) {
                     const bodyText = text.substring(bodyStart, scanPos);
@@ -302,7 +303,7 @@ function handleEachBlock(
                         endPos,
                     };
                 }
-            } else if (tag === '/if' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay') {
+            } else if (tag === '/if' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
             }
 
@@ -342,7 +343,7 @@ function handleWhenBlock(
 
             if (tag.startsWith('#if') || tag.startsWith('#each') || tag.startsWith('#when') || tag.startsWith('#func') || tag.startsWith('#escape') || tag.startsWith('#pure')) {
                 depth++;
-            } else if (tag === '/when' || tag === '/') {
+            } else if (tag === '/when') {
                 depth--;
                 if (depth === 0) {
                     const bodyEnd = scanPos;
@@ -388,7 +389,7 @@ function handleWhenBlock(
                         endPos,
                     };
                 }
-            } else if (tag === '/if' || tag === '/each' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay') {
+            } else if (tag === '/if' || tag === '/each' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
             } else if ((tag === 'else' || tag === ':else') && depth === 1) {
                 elseStart = scanPos;
@@ -405,25 +406,95 @@ function handleWhenBlock(
 }
 
 /**
+ * Convert colon-separated CBS condition strings like `(equal:getvar:a::0)` or `screen_width > 768`
+ * to standard JS/Skizo function syntax `equal(getvar('a'), 0)`.
+ */
+function convertColonCondition(raw: string): string {
+    let str = raw.trim();
+
+    // Strip outer parentheses: (equal:a::b) -> equal:a::b
+    while (str.startsWith('(') && str.endsWith(')')) {
+        let depth = 0;
+        let balanced = true;
+        for (let i = 0; i < str.length - 1; i++) {
+            if (str[i] === '(') depth++;
+            else if (str[i] === ')') depth--;
+            if (depth === 0) { balanced = false; break; }
+        }
+        if (balanced) {
+            str = str.slice(1, -1).trim();
+        } else {
+            break;
+        }
+    }
+
+    // Convert getvar:key or getvar::key -> getvar('key')
+    str = str.replace(/\b(getvar|getglobalvar|tempvar|gettempvar)::?([a-zA-Z0-9_]+)\b/gi, (_m, fn, key) => {
+        const normFn = fn.toLowerCase().includes('temp') ? 'tempvar' : 'getvar';
+        return `${normFn}('${key}')`;
+    });
+
+    // Convert keyword aliases for zero-arg functions: screen_width -> screenwidth(), etc.
+    str = str.replace(/\b(screen_width|screenwidth|screen_height|screenheight|chat_index|chatindex|lastmessageindex|lastmessageid)\b(?!\()/gi, (_m, kw) => {
+        const norm = KEYWORD_ALIASES[kw.toLowerCase()] || kw.toLowerCase();
+        return `${norm}()`;
+    });
+
+    // If it has functional colon pattern: keyword:arg1:arg2 or keyword::arg1::arg2
+    // e.g. equal:getvar('bahasa')::0 or not_equal:getvar('bahasa')::7
+    const colonMatch = str.match(/^([a-zA-Z_]\w*)(?:::|:)([\s\S]+)$/);
+    if (colonMatch) {
+        let keyword = colonMatch[1].toLowerCase();
+        if (KEYWORD_ALIASES[keyword]) keyword = KEYWORD_ALIASES[keyword];
+
+        const rawArgs = colonMatch[2];
+        // Split by :: or : if :: not found
+        const parts = rawArgs.includes('::') ? splitArgs(rawArgs, '::') : rawArgs.split(':');
+        const formatted = parts.map(a => {
+            const trimmed = a.trim();
+            if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
+            if (trimmed.startsWith("'") || trimmed.startsWith('"')) return trimmed;
+            if (trimmed.includes('(') && trimmed.endsWith(')')) return trimmed; // already a function call like getvar('x')
+            if (trimmed === '') return "''";
+            // Check if nested colon call
+            if (trimmed.includes(':')) return convertColonCondition(trimmed);
+            return `'${trimmed.replace(/'/g, "\\'")}'`;
+        });
+        return `${keyword}(${formatted.join(', ')})`;
+    }
+
+    return str;
+}
+
+/**
  * Process a condition string:
  * 1. Convert nested CBS → template
  * 2. Strip `{{? }}` / `${?()}` wrappers
  * 3. Strip `${}` wrappers so function calls are bare
+ * 4. Convert Risu colon syntax (equal:getvar:a::b) to equal(getvar('a'), 'b')
  *
- * Example: `{{? {{screen_width}} > 768 }}` → `screen_width() > 768`
+ * Example: `{{? {{screen_width}} > 768 }}` → `screenwidth() > 768`
+ * Example: `(equal:getvar:bahasa::0)` → `equal(getvar('bahasa'), 0)`
  */
 function processCondition(condRaw: string): string {
-    // Convert nested CBS first
-    let cond = convertCBStoTemplate(condRaw);
+    let cond = condRaw.trim();
 
-    // Strip ${?(...)} wrapper if present
+    // 1. If it has CBS double-curly syntax, convert first
+    if (cond.includes('{{')) {
+        cond = convertCBStoTemplate(cond);
+    }
+
+    // 2. Strip ${?(...)} wrapper if present
     const qMatch = cond.match(/^\$\{\?\(([\s\S]*)\)\}$/);
     if (qMatch) {
         cond = qMatch[1].trim();
     }
 
-    // Strip all ${ } wrappers → bare function calls
+    // 3. Strip all ${ } wrappers → bare function calls
     cond = stripTemplateWrappers(cond);
+
+    // 4. Convert any remaining Risu colon/alias syntax
+    cond = convertColonCondition(cond);
 
     return cond.trim();
 }

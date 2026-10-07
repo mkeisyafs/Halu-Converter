@@ -695,6 +695,12 @@ export function convertCBSInLuaCode(code: string): string {
         // Skip comments
         if (trimmed.startsWith('//')) return '';
 
+        // Not CBS: a CBS macro is `name`, `name:args`, `name::args` or `? expr`. Anything
+        // else, e.g. the Lua nested table `{{date="SUMMARY", note=summary}}`, is real Lua.
+        // ponytail: a nested table holding one bare identifier (`{{x}}`) still looks like
+        // CBS; scope conversion to string literals if that ever shows up.
+        if (!/^(?:\?|[A-Za-z_][\w-]*(?::[\s\S]*)?$)/.test(trimmed)) return _match;
+
         // Skip block structures — leave them as-is in Lua code
         if (trimmed.startsWith('#') || trimmed.startsWith('/') || trimmed === 'else' || trimmed === ':else') {
             return _match;

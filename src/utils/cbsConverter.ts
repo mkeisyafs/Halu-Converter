@@ -1,59 +1,144 @@
 
-const KEYWORD_ALIASES: Record<string, string> = {
-    'bot': 'char', 'char_name': 'char', 'charname': 'char',
+// ─── RisuAI CBS name tables ─────────────────────────────────
+//
+// RisuAI's CBS layer (src/ts/cbs.ts) exposes ~174 functions, many with
+// aliases. SkizoAI supports a smaller set under its own names. Converting a
+// card therefore needs three tables:
+//
+//   1. RISU_ALIASES  — Risu alias → canonical Risu function name
+//   2. RISU_TO_SKIZO — canonical Risu name → SkizoAI name (only when different)
+//   3. RISU_LITERAL  — canonical Risu name → literal text (macros SkizoAI has
+//                      no function for, but that are just static output)
+
+/** Risu alias → canonical Risu function name. */
+const RISU_ALIASES: Record<string, string> = {
+    // character / persona / prompt
+    'bot': 'char',
+    'char_name': 'char', 'charname': 'char',
     'user_name': 'user', 'username': 'user',
     'char_persona': 'personality', 'charpersona': 'personality',
     'char_desc': 'description', 'chardesc': 'description',
     'example_message': 'exampledialogue', 'example_dialogue': 'exampledialogue', 'examplemessage': 'exampledialogue',
     'user_persona': 'persona', 'userpersona': 'persona',
-    'previous_char_chat': 'previouscharchat', 'previouscharchat': 'previouscharchat', 'lastcharmessage': 'previouscharchat',
-    'previous_user_chat': 'previoususerchat', 'previoususerchat': 'previoususerchat', 'lastusermessage': 'previoususerchat',
-    'chat_index': 'chatindex', 'chatindex': 'chatindex', 'lastmessageindex': 'lastmessageid',
-    // prompt
-    'mainprompt': 'main_prompt', 'systemprompt': 'main_prompt',
-    'globalnote': 'ujb', 'systemnote': 'ujb',
-    // vars
-    'gettempvar': 'tempvar',
-    'getglobalvar': 'getvar', 'setglobalvar': 'setvar',
-    // comparison
-    'not_equal': 'notequal', 'notequal': 'notequal',
-    'greater_equal': 'greaterequal', 'greaterequal': 'greaterequal',
-    'less_equal': 'lessequal', 'lessequal': 'lessequal',
-    // screen
-    'screen_width': 'screenwidth', 'screenwidth': 'screenwidth',
-    'screen_height': 'screenheight', 'screenheight': 'screenheight',
-    // time
-    'message_time': 'messagetime', 'messagetime': 'messagetime',
-    'message_date': 'messagedate', 'messagedate': 'messagedate',
-    'idle_duration': 'idleduration', 'idleduration': 'idleduration',
-    'message_idle_duration': 'messageidleduration', 'messageidleduration': 'messageidleduration',
-    // media
-    'img': 'image',
-    // utility
-    'newline': 'br', 'none': 'blank',
-    'cnl': 'cbr', 'cnewline': 'cbr',
-    'ddecbo': 'bo', 'ddecbc': 'bc',
-    'is_first_msg': 'isfirstmsg', 'isfirstmessage': 'isfirstmsg',
-    // array
-    'array': 'makearray', 'make_array': 'makearray',
-    'array_length': 'arraylength', 'array_element': 'arrayelement',
-    'array_push': 'arraypush', 'array_pop': 'arraypop',
-    'array_shift': 'arrayshift', 'array_splice': 'arraysplice',
-    // dict
-    'dict': 'makedict', 'make_dict': 'makedict',
-    'makeobject': 'makedict', 'object': 'makedict', 'make_object': 'makedict',
-    'dict_element': 'dictelement', 'objectelement': 'dictelement', 'object_element': 'dictelement',
-    'ele': 'element',
-    // math
-    'fix_num': 'fixnum', 'fixnumber': 'fixnum', 'fix_number': 'fixnum',
-    // encoding
-    'unicode_encode': 'unicodeencode', 'unicodeencode': 'unicodeencode',
-    'unicode_decode': 'unicodedecode', 'unicodedecode': 'unicodedecode',
-    // misc
+    'systemprompt': 'mainprompt', 'main_prompt': 'mainprompt',
+    'globalnote': 'globalnote', 'systemnote': 'globalnote', 'ujb': 'globalnote',
+    'jailbreak': 'jb',
+    'author_note': 'authornote',
     'worldinfo': 'lorebook',
+    'previous_char_chat': 'previouscharchat', 'lastcharmessage': 'previouscharchat',
+    'previous_user_chat': 'previoususerchat', 'lastusermessage': 'previoususerchat',
     'usermessages': 'userhistory', 'user_history': 'userhistory',
     'charmessages': 'charhistory', 'char_history': 'charhistory',
+    'messages': 'history',
+    // chat meta
+    'chat_index': 'chatindex',
+    'lastmessageindex': 'lastmessageid',
+    'firstmessageindex': 'firstmsgindex', 'first_msg_index': 'firstmsgindex',
+    'isfirstmessage': 'isfirstmsg', 'is_first_msg': 'isfirstmsg',
+    'triggerid': 'trigger_id',
+    // time
+    'message_time': 'messagetime',
+    'message_date': 'messagedate',
+    'message_unixtime_array': 'messageunixtimearray',
+    'message_idle_duration': 'messageidleduration',
+    'idle_duration': 'idleduration',
+    'datetimeformat': 'date',
+    // vars
+    'gettempvar': 'tempvar',
+    // comparison
+    'not_equal': 'notequal',
+    'greater_equal': 'greaterequal',
+    'less_equal': 'lessequal',
+    // strings
+    'prefill_supported': 'prefillsupported', 'prefill': 'prefillsupported',
+    'previous_chat_log': 'previouschatlog',
+    // arrays / dicts
+    'array': 'makearray', 'a': 'makearray', 'make_array': 'makearray',
+    'array_length': 'arraylength',
+    'array_element': 'arrayelement',
+    'array_push': 'arraypush', 'array_pop': 'arraypop',
+    'array_shift': 'arrayshift', 'array_splice': 'arraysplice',
+    'dict': 'makedict', 'd': 'makedict', 'makeobject': 'makedict',
+    'object': 'makedict', 'o': 'makedict', 'make_dict': 'makedict', 'make_object': 'makedict',
+    'ele': 'element',
+    'objectelement': 'dictelement', 'dict_element': 'dictelement', 'object_element': 'dictelement',
+    'dictassert': 'objectassert', 'object_assert': 'objectassert',
+    // screen
+    'screen_width': 'screenwidth', 'screen_height': 'screenheight',
+    // math / misc
+    'fixnumber': 'fixnum', 'fix_num': 'fixnum', 'fix_number': 'fixnum',
+    'mod': 'remaind', 'remainder': 'remaind',
+    'latex': 'tex', 'katex': 'tex', 'furigana': 'ruby',
+    // encoding / crypto
+    'unicode_encode': 'unicodeencode', 'unicode_decode': 'unicodedecode',
+    'unicodeencodefromhex': 'ue', 'unicodedecodefromhex': 'u',
+    'xorencrypt': 'xor', 'xorencode': 'xor', 'xore': 'xor',
+    'xordecode': 'xordecrypt', 'xord': 'xordecrypt',
+    'crypto': 'crypt', 'caesar': 'crypt', 'encrypt': 'crypt', 'decrypt': 'crypt',
+    // module
+    'module_enabled': 'moduleenabled', 'module_assetlist': 'moduleassetlist',
+    // newline / no-op
+    'newline': 'br', 'none': 'blank',
+    // display-escaping (literal braces / brackets that must survive parsing)
+    'displayescapedcurlybracketopen': 'decbo', 'displayescapedcurlybracketclose': 'decbc',
+    'ddecbo': 'bo', 'doubledisplayescapedcurlybracketopen': 'bo',
+    'ddecbc': 'bc', 'doubledisplayescapedcurlybracketclose': 'bc',
+    'debo': 'displayescapedbracketopen', '(': 'displayescapedbracketopen',
+    'debc': 'displayescapedbracketclose', ')': 'displayescapedbracketclose',
+    'deabo': 'displayescapedanglebracketopen', '<': 'displayescapedanglebracketopen',
+    'deabc': 'displayescapedanglebracketclose', '>': 'displayescapedanglebracketclose',
+    'dec': 'displayescapedcolon', ':': 'displayescapedcolon',
+    ';': 'displayescapedsemicolon',
+    'cnl': 'cbr', 'cnewline': 'cbr',
+    // conversion-time only
+    ':each': '#each',
 };
+
+/**
+ * Canonical Risu name → SkizoAI function name.
+ * Only entries where the two names differ. Everything else keeps its name.
+ */
+const RISU_TO_SKIZO: Record<string, string> = {
+    'previouscharchat': 'lastcharmsg',
+    'previoususerchat': 'lastusermsg',
+    'greater': 'gt',
+    'getglobalvar': 'getvar',
+    'setglobalvar': 'setvar',
+    'rollpick': 'rollp',
+    'addvar': 'addvar',
+};
+
+/**
+ * Canonical Risu name → literal text. Used for macros SkizoAI has no runtime
+ * function for but which are just static output. Braces are emitted as HTML
+ * entities so SkizoAI's parser leaves them alone while still rendering them.
+ */
+const RISU_LITERAL: Record<string, string> = {
+    'blank': '',
+    'decbo': '&#123;',
+    'decbc': '&#125;',
+    'bo': '&#123;&#123;',
+    'bc': '&#125;&#125;',
+    'displayescapedbracketopen': '&#40;',
+    'displayescapedbracketclose': '&#41;',
+    'displayescapedanglebracketopen': '&lt;',
+    'displayescapedanglebracketclose': '&gt;',
+    'displayescapedcolon': '&#58;',
+    'displayescapedsemicolon': '&#59;',
+    'cbr': '\\n',
+};
+
+/** Normalize a raw keyword to its canonical Risu function name. */
+function canonicalRisu(keyword: string): string {
+    const key = keyword.trim().toLowerCase();
+    return RISU_ALIASES[key] ?? key;
+}
+
+/** Map a raw Risu keyword to the SkizoAI name that should be emitted. */
+function toSkizoName(keyword: string): string {
+    const canonical = canonicalRisu(keyword);
+    return RISU_TO_SKIZO[canonical] ?? canonical;
+}
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -137,11 +222,18 @@ function convertSimpleExpression(inner: string): string {
 
     // Standard keyword::arg::arg pattern
     const parts = splitArgs(trimmed, '::');
-    let keyword = parts[0].trim().toLowerCase();
+    let keyword = canonicalRisu(parts[0]);
     const args = parts.slice(1).map(a => a.trim());
 
-    // Apply aliases
-    if (KEYWORD_ALIASES[keyword]) keyword = KEYWORD_ALIASES[keyword];
+    // Macros SkizoAI has no runtime for, but that are static output
+    if (keyword in RISU_LITERAL) {
+        const literal = RISU_LITERAL[keyword] ?? '';
+        const repeat = parseInt(args[0] ?? '', 10);
+        return Number.isFinite(repeat) && repeat > 1 ? literal.repeat(repeat) : literal;
+    }
+
+    // Map canonical Risu names onto their SkizoAI counterparts
+    keyword = RISU_TO_SKIZO[keyword] ?? keyword;
 
     if (args.length === 0) {
         return `\${${keyword}()}`;
@@ -200,7 +292,7 @@ function handleIfBlock(
                     const endPos = close + 2;
 
                     // Process condition: convert CBS, strip ? wrapper, strip ${}
-                    let condition = processCondition(condRaw);
+                    const condition = processCondition(condRaw);
 
                     // Extract body (and else body)
                     let bodyText: string;
@@ -435,17 +527,15 @@ function convertColonCondition(raw: string): string {
     });
 
     // Convert keyword aliases for zero-arg functions: screen_width -> screenwidth(), etc.
-    str = str.replace(/\b(screen_width|screenwidth|screen_height|screenheight|chat_index|chatindex|lastmessageindex|lastmessageid)\b(?!\()/gi, (_m, kw) => {
-        const norm = KEYWORD_ALIASES[kw.toLowerCase()] || kw.toLowerCase();
-        return `${norm}()`;
+    str = str.replace(/\b(screen_width|screenwidth|screen_height|screenheight|chat_index|chatindex|lastmessageindex|lastmessageid|previous_char_chat|previouscharchat|lastcharmessage|previous_user_chat|previoususerchat|lastusermessage)\b(?!\()/gi, (_m, kw) => {
+        return `${toSkizoName(kw)}()`;
     });
 
     // If it has functional colon pattern: keyword:arg1:arg2 or keyword::arg1::arg2
     // e.g. equal:getvar('bahasa')::0 or not_equal:getvar('bahasa')::7
     const colonMatch = str.match(/^([a-zA-Z_]\w*)(?:::|:)([\s\S]+)$/);
     if (colonMatch) {
-        let keyword = colonMatch[1].toLowerCase();
-        if (KEYWORD_ALIASES[keyword]) keyword = KEYWORD_ALIASES[keyword];
+        const keyword = toSkizoName(colonMatch[1] ?? '');
 
         const rawArgs = colonMatch[2];
         // Split by :: or : if :: not found
@@ -585,6 +675,94 @@ function handleHashIfBlock(
 // ─── Main Converter ────────────────────────────────────────
 
 /**
+ * Handle a transparent wrapper block such as `{{#pure}} ... {{/pure}}` or
+ * `{{#puredisplay}} ... {{/puredisplay}}`. These only modify how CBS is
+ * evaluated, which SkizoAI already does, so the body is converted normally and
+ * the wrapper is dropped.
+ */
+function handleTransparentBlock(
+    text: string,
+    openStart: number,
+    openClose: number,
+): { output: string; endPos: number } | null {
+    const openingContent = text.substring(openStart + 2, openClose).trim();
+    const tagName = openingContent.split(/\s+/)[0] ?? '';
+    if (!tagName.startsWith('#')) return null;
+    const closeTag = `/${tagName.slice(1)}`;
+    const bodyStart = openClose + 2;
+
+    let depth = 1;
+    let scanPos = bodyStart;
+
+    while (scanPos < text.length - 1 && depth > 0) {
+        if (text[scanPos] === '{' && text[scanPos + 1] === '{') {
+            const close = findMatchingClose(text, scanPos);
+            if (close < 0) return null;
+
+            const tag = text.substring(scanPos + 2, close).trim();
+
+            if (tag === tagName) {
+                depth++;
+            } else if (tag === closeTag) {
+                depth--;
+                if (depth === 0) {
+                    const body = text.substring(bodyStart, scanPos);
+                    return { output: convertCBStoTemplate(body), endPos: close + 2 };
+                }
+            }
+
+            scanPos = close + 2;
+        } else {
+            scanPos++;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Handle `{{#escape}} ... {{/escape}}`: the body is emitted literally, with
+ * brace tokens as HTML entities so SkizoAI's parser does not touch them.
+ */
+function handleEscapeBlock(
+    text: string,
+    openClose: number,
+): { output: string; endPos: number } | null {
+    const bodyStart = openClose + 2;
+    let depth = 1;
+    let scanPos = bodyStart;
+
+    while (scanPos < text.length - 1 && depth > 0) {
+        if (text[scanPos] === '{' && text[scanPos + 1] === '{') {
+            const close = findMatchingClose(text, scanPos);
+            if (close < 0) return null;
+
+            const tag = text.substring(scanPos + 2, close).trim();
+
+            if (tag.startsWith('#escape')) {
+                depth++;
+            } else if (tag === '/escape') {
+                depth--;
+                if (depth === 0) {
+                    const body = text.substring(bodyStart, scanPos);
+                    const escaped = body
+                        .replace(/\{\{/g, '&#123;&#123;')
+                        .replace(/\}\}/g, '&#125;&#125;')
+                        .replace(/\$\{/g, '&#36;{');
+                    return { output: escaped, endPos: close + 2 };
+                }
+            }
+
+            scanPos = close + 2;
+        } else {
+            scanPos++;
+        }
+    }
+
+    return null;
+}
+
+/**
  * Convert all RisuAI CBS syntax in text to SkizoAI template syntax.
  *
  * Uses a depth-tracking parser for nested `{{ }}` and converts
@@ -657,8 +835,28 @@ export function convertCBStoTemplate(text: string): string {
                 }
             }
 
+            // ── Block: {{#pure}}/{{#puredisplay}} ... {{/pure}} (transparent)
+            if (inner.startsWith('#pure')) {
+                const block = handleTransparentBlock(text, i, closePos);
+                if (block) {
+                    result += block.output;
+                    i = block.endPos;
+                    continue;
+                }
+            }
+
+            // ── Block: {{#escape}} ... {{/escape}} (literal body)
+            if (inner.startsWith('#escape')) {
+                const block = handleEscapeBlock(text, closePos);
+                if (block) {
+                    result += block.output;
+                    i = block.endPos;
+                    continue;
+                }
+            }
+
             // ── Orphaned {{/if}}, {{/each}}, {{/when}}, {{else}} — strip them
-            if (inner === '/if' || inner === '/each' || inner === '/when' || inner === '/' || inner === 'else' || inner === ':else') {
+            if (inner === '/if' || inner === '/each' || inner === '/when' || inner === '/' || inner === 'else' || inner === ':else' || inner === '/pure' || inner === '/puredisplay' || inner === '/escape') {
                 i = closePos + 2;
                 continue;
             }

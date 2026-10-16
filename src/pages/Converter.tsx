@@ -146,11 +146,11 @@ export default function Converter() {
               100% client-side
             </span>
             <a
-              href="https://github.com"
+              href="https://github.com/kwaroran/RisuAI"
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-              aria-label="GitHub"
+              aria-label="RisuAI on GitHub"
             >
               <Github className="h-4 w-4" />
             </a>
@@ -331,7 +331,16 @@ export default function Converter() {
       </main>
 
       <footer className="relative z-10 border-t border-white/5 py-6 text-center text-[11px] text-white/30">
-        Halu Converter · AGPL-3.0
+        Halu Converter · AGPL-3.0 · built for{' '}
+        <a
+          href="https://github.com/kwaroran/RisuAI"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-white/50 underline-offset-2 transition hover:text-white hover:underline"
+        >
+          <Github className="h-3 w-3" />
+          RisuAI
+        </a>
       </footer>
     </div>
   );

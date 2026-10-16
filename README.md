@@ -2,6 +2,8 @@
 
 A modern, **100% client-side** converter that turns RisuAI character cards into a portable `.zip` archive.
 
+Built for [RisuAI](https://github.com/kwaroran/RisuAI) — all credit for the CBS macro system and card format goes to the RisuAI project.
+
 No backend. No upload. No tracking. Everything runs in your browser.
 
 ## Supported Inputs

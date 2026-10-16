@@ -383,11 +383,11 @@ function normalizeCharacterData(raw: any): CharacterData {
     if (raw.metadata?.tool?.name === 'Janitor-S') {
         return {
             name: raw.name || '',
-            bio_character: raw.personality || '',
-            personality: raw.description || '',
-            scenario: raw.scenario || '',
-            initial_message: raw.first_mes || '',
-            message_example: raw.mes_example || '',
+            bio_character: risuToskizo(convertCBStoTemplate(raw.personality || '')),
+            personality: risuToskizo(convertCBStoTemplate(raw.description || '')),
+            scenario: risuToskizo(convertCBStoTemplate(raw.scenario || '')),
+            initial_message: risuToskizo(convertCBStoTemplate(raw.first_mes || '')),
+            message_example: risuToskizo(convertCBStoTemplate(raw.mes_example || '')),
         };
     }
 
@@ -395,11 +395,11 @@ function normalizeCharacterData(raw: any): CharacterData {
     const base = raw.data ? raw.data : raw;
     return {
         name: base.name || '',
-        bio_character: base.bio_character || '',
-        personality: base.personality || base.description || '',
-        scenario: base.scenario || '',
-        initial_message: base.initial_message || base.first_mes || '',
-        message_example: base.message_example || base.mes_example || '',
+        bio_character: risuToskizo(convertCBStoTemplate(base.bio_character || '')),
+        personality: risuToskizo(convertCBStoTemplate(base.personality || base.description || '')),
+        scenario: risuToskizo(convertCBStoTemplate(base.scenario || '')),
+        initial_message: risuToskizo(convertCBStoTemplate(base.initial_message || base.first_mes || '')),
+        message_example: risuToskizo(convertCBStoTemplate(base.message_example || base.mes_example || '')),
     };
 }
 

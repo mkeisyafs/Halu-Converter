@@ -204,6 +204,126 @@ function stripTemplateWrappers(text: string): string {
     return result;
 }
 
+/**
+ * Return the index of the `}` that closes the `${` starting at `start`
+ * (which must point at the `$`), balancing nested braces. -1 if unbalanced.
+ */
+function findBraceBalanced(text: string, start: number): number {
+    let depth = 0;
+    for (let i = start + 1; i < text.length; i++) {
+        if (text[i] === '{') depth++;
+        else if (text[i] === '}') {
+            depth--;
+            if (depth === 0) return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Build the opening `${name(args){` for a `#name ...` block tag, or null when
+ * the tag is not a block SkizoAI understands.
+ *
+ *   `#when('metaprompt', 'vis', 1)`  -> `${when('metaprompt', 'vis', 1){`
+ *   `#when ${?(roll(500) <= 10)}()`  -> `${when(?(roll(500) <= 10)){`
+ *   `#if ${equal(a, b)}()`           -> `${if(equal(a, b)){`
+ */
+function buildSkizoBlockPrefix(tag: string): string | null {
+    const match = tag.match(/^#([a-zA-Z_][\w-]*)([\s\S]*)$/);
+    if (!match) return null;
+
+    const name = (match[1] ?? '').toLowerCase();
+    if (name !== 'if' && name !== 'when' && name !== 'each' && name !== 'pure' && name !== 'puredisplay') {
+        return null;
+    }
+
+    const rest = (match[2] ?? '').trim();
+    let args: string;
+    if (rest.startsWith('(') && rest.endsWith(')')) {
+        args = rest.slice(1, -1).trim();
+    } else {
+        // Space form: an expression (already wrapped in `${}`) with an optional
+        // trailing empty `()` that is just part of the author's block marker.
+        const expr = rest.replace(/\(\)\s*$/, '').trim();
+        args = stripTemplateWrappers(expr);
+    }
+    return `\${${name}(${args}){`;
+}
+
+/**
+ * Find the `${/label()}` that closes the block opened before `from`, counting
+ * nested `${#...}` / `${/...}` pairs so inner blocks do not end it early.
+ */
+function findMatchingBlockClose(text: string, from: number): { start: number; end: number } | null {
+    let depth = 1;
+    let i = from;
+    while (i < text.length) {
+        if (text[i] === '$' && text[i + 1] === '{' && (text[i + 2] === '#' || text[i + 2] === '/')) {
+            const end = findBraceBalanced(text, i);
+            if (end < 0) return null;
+            if (text[i + 2] === '#') {
+                depth++;
+            } else {
+                depth--;
+                if (depth === 0) return { start: i, end: end + 1 };
+            }
+            i = end + 1;
+            continue;
+        }
+        i++;
+    }
+    return null;
+}
+
+/**
+ * Convert `${#name(...)} ... ${/label()}` blocks into SkizoAI's brace-bodied
+ * block syntax `${name(...){ ... }}`.
+ *
+ * Some cards/tools emit this `${#...}` / `${/label()}` form, where the closing
+ * label is decorative (it names the section, not the opener). SkizoAI's parser
+ * does not recognise a leading `#` or `/` in a function name, so it prints the
+ * markers literally and never evaluates the condition. This rewrites them to
+ * the form SkizoAI understands.
+ */
+export function convertSkizoBlockSyntax(text: string): string {
+    if (!text || typeof text !== 'string' || !text.includes('${#')) return text;
+
+    let result = '';
+    let i = 0;
+    let pendingCloses = 0;
+    while (i < text.length) {
+        if (text[i] === '$' && text[i + 1] === '{' && text[i + 2] === '#') {
+            const openEnd = findBraceBalanced(text, i);
+            const prefix = openEnd >= 0 ? buildSkizoBlockPrefix(text.substring(i + 2, openEnd)) : null;
+
+            if (prefix === null) {
+                result += text[i];
+                i++;
+                continue;
+            }
+
+            const close = findMatchingBlockClose(text, openEnd + 1);
+            if (!close) {
+                // No matching close in this field: the author left the block open
+                // to the end (e.g. an outer "if last message" around whole panels).
+                // Open it and auto-close after the remaining content.
+                result += prefix;
+                pendingCloses++;
+                i = openEnd + 1;
+                continue;
+            }
+
+            const body = text.substring(openEnd + 1, close.start);
+            result += prefix + convertSkizoBlockSyntax(body) + '}}';
+            i = close.end;
+        } else {
+            result += text[i];
+            i++;
+        }
+    }
+    return pendingCloses > 0 ? result + '}}'.repeat(pendingCloses) : result;
+}
+
 // ─── Expression Converter ──────────────────────────────────
 
 /**
@@ -771,6 +891,7 @@ function handleEscapeBlock(
  */
 export function convertCBStoTemplate(text: string): string {
     if (!text || typeof text !== 'string') return text;
+    if (text.includes('${#')) text = convertSkizoBlockSyntax(text);
     if (!text.includes('{{')) return text;
 
     let result = '';

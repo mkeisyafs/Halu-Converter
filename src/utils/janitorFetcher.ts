@@ -6,7 +6,6 @@ import type { JanitorRawData } from './janitorSplitter';
 
 export function extractJanitorId(input: string): string | null {
   const trimmed = input.trim();
-  // UUID regex
   const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
   const match = trimmed.match(uuidRegex);
   return match ? match[0] : null;
@@ -37,25 +36,8 @@ export async function fetchImageAsPngDataUrl(imageUrl: string): Promise<string> 
     };
 
     img.onerror = () => {
-      // Try with proxy if direct fails
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-      const proxyImg = new Image();
-      proxyImg.crossOrigin = 'anonymous';
-      proxyImg.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = proxyImg.naturalWidth || 600;
-          canvas.height = proxyImg.naturalHeight || 600;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Canvas context not available');
-          ctx.drawImage(proxyImg, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        } catch (e) {
-          reject(e);
-        }
-      };
-      proxyImg.onerror = () => reject(new Error('Failed to load avatar image'));
-      proxyImg.src = proxyUrl;
+      // Direct load might fail due to CORS, try fallback image loader
+      reject(new Error('Failed to load avatar image'));
     };
 
     img.src = imageUrl;
@@ -71,15 +53,19 @@ export async function fetchJanitorBot(
 ): Promise<JanitorRawData> {
   const charId = extractJanitorId(input);
   if (!charId) {
-    throw new Error('Invalid JanitorAI URL or Character ID. Example: https://janitorai.com/characters/933ae162-bfe0-4fb9-a2ca-510791612fa1_character-name');
+    throw new Error(
+      'Invalid JanitorAI URL or Character ID. Example: https://janitorai.com/characters/933ae162-bfe0-4fb9-a2ca-510791612fa1_character-name'
+    );
   }
 
-  // Endpoints to attempt
   const targetUrl = `https://janitorai.com/hampter/characters/${charId}`;
+
+  // Candidate endpoints (Prioritizes local / Vercel serverless proxy first)
   const candidates: string[] = [
-    `/api/janitor/characters/${charId}`, // Vite local dev proxy
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`, // CORS Proxy fallback
+    `/api/janitor?id=${charId}`,
+    `/api/janitor/characters/${charId}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
   ];
 
   let rawJson: any = null;
@@ -96,9 +82,13 @@ export async function fetchJanitorBot(
     try {
       const resp = await fetch(url, { headers });
       if (resp.ok) {
-        rawJson = await resp.json();
-        if (rawJson && (rawJson.name || rawJson.id)) {
-          break;
+        const text = await resp.text();
+        if (text && text.trim().startsWith('{')) {
+          const parsed = JSON.parse(text);
+          if (parsed && (parsed.name || parsed.id)) {
+            rawJson = parsed;
+            break;
+          }
         }
       }
     } catch (err: any) {
@@ -109,7 +99,7 @@ export async function fetchJanitorBot(
   if (!rawJson || !rawJson.name) {
     throw new Error(
       lastError?.message ||
-        'Failed to fetch character from JanitorAI. The bot might be private, deleted, or blocked by Cloudflare. You can still drop the downloaded .card.png file directly!'
+        'Gagal mengambil data dari URL JanitorAI (terhalang Cloudflare/CORS). Silakan gunakan tombol upload file untuk memasukkan file .card.png atau .json kartu yang sudah diunduh!'
     );
   }
 
@@ -120,12 +110,7 @@ export async function fetchJanitorBot(
     try {
       pngDataUrl = await fetchImageAsPngDataUrl(avatarUrl);
     } catch {
-      // Fallback without width param
-      try {
-        pngDataUrl = await fetchImageAsPngDataUrl(`https://ella.janitorai.com/bot-avatars/${rawJson.avatar}`);
-      } catch {
-        // Continue without image if avatar fails
-      }
+      // Proceed without image if avatar fetch is restricted by browser CORS
     }
   }
 

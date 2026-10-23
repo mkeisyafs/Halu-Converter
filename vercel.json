@@ -5,6 +5,16 @@
   "framework": "vite",
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/api/janitor/characters/:id*",
+      "destination": "/api/janitor?id=:id*"
+    },
+    {
+      "source": "/api/janitor/:id*",
+      "destination": "/api/janitor?id=:id*"
+    }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

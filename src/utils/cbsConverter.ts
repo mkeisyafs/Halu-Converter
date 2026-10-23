@@ -1,4 +1,59 @@
 
+// ─── Output Style ──────────────────────────────────────────
+//
+// SkizoAI understands two block notations:
+//   brace: `${if(cond){ body }}`          (legacy, most compact)
+//   block: `${if(cond)} body ${/if}`      (readable, default)
+//
+// The readable block form pairs an opening `${if(...)}` with a `${/if}` close
+// and allows `${else}` in between. Toggled by the converter UI.
+
+export type BlockOutputStyle = 'block' | 'brace';
+
+let blockOutputStyle: BlockOutputStyle = 'block';
+
+/** Choose the block notation this converter emits. */
+export function setBlockOutputStyle(style: BlockOutputStyle): void {
+    blockOutputStyle = style;
+}
+
+export function getBlockOutputStyle(): BlockOutputStyle {
+    return blockOutputStyle;
+}
+
+function isKnownBlockName(name: string): boolean {
+    return name === 'if' || name === 'when' || name === 'each';
+}
+
+/** Emit an `if`/`when` block in the selected style. */
+function emitConditional(
+    name: 'if' | 'when',
+    args: string,
+    body: string,
+    elseBody: string | null,
+): string {
+    if (blockOutputStyle === 'block') {
+        return elseBody === null
+            ? `\${${name}(${args})}${body}\${/${name}}`
+            : `\${${name}(${args})}${body}\${else}${elseBody}\${/${name}}`;
+    }
+    if (name === 'if') {
+        return elseBody === null
+            ? `\${if(${args}){${body}}}`
+            : `\${if(${args}){${body}}}\${if(not(${args})){${elseBody}}}`;
+    }
+    return elseBody === null
+        ? `\${when(${args}){${body}}}`
+        : `\${when(${args}){${body}} else {${elseBody}}}`;
+}
+
+/** Emit an `each` block in the selected style. */
+function emitEach(list: string, varName: string, body: string): string {
+    return blockOutputStyle === 'block'
+        ? `\${each(${list}, '${varName}')}${body}\${/each}`
+        : `\${each(${list}, '${varName}'){${body}}}`;
+}
+
 // ─── RisuAI CBS name tables ─────────────────────────────────
 //
 // RisuAI's CBS layer (src/ts/cbs.ts) exposes ~174 functions, many with
@@ -221,14 +276,13 @@ function findBraceBalanced(text: string, start: number): number {
 }
 
 /**
- * Build the opening `${name(args){` for a `#name ...` block tag, or null when
- * the tag is not a block SkizoAI understands.
+ * Build the opening tag for a `#name ...` block, or null when the tag is not a
+ * block SkizoAI understands. Returns the open text and the matching close.
  *
- *   `#when('metaprompt', 'vis', 1)`  -> `${when('metaprompt', 'vis', 1){`
- *   `#when ${?(roll(500) <= 10)}()`  -> `${when(?(roll(500) <= 10)){`
- *   `#if ${equal(a, b)}()`           -> `${if(equal(a, b)){`
+ *   `#when('metaprompt', 'vis', 1)` -> $\{when('metaprompt', 'vis', 1)} … $\{/when}
+ *   `#when ${?(roll(500) <= 10)}()` -> $\{when(?(roll(500) <= 10))} … $\{/when}
  */
-function buildSkizoBlockPrefix(tag: string): string | null {
+function buildSkizoBlockPrefix(tag: string): { open: string; close: string } | null {
     const match = tag.match(/^#([a-zA-Z_][\w-]*)([\s\S]*)$/);
     if (!match) return null;
 
@@ -247,7 +301,11 @@ function buildSkizoBlockPrefix(tag: string): string | null {
         const expr = rest.replace(/\(\)\s*$/, '').trim();
         args = stripTemplateWrappers(expr);
     }
-    return `\${${name}(${args}){`;
+
+    if (blockOutputStyle === 'block' && isKnownBlockName(name)) {
+        return { open: `\${${name}(${args})}`, close: `\${/${name}}` };
+    }
+    return { open: `\${${name}(${args}){`, close: '}}' };
 }
 
 /**
@@ -290,13 +348,13 @@ export function convertSkizoBlockSyntax(text: string): string {
 
     let result = '';
     let i = 0;
-    let pendingCloses = 0;
+    const pendingCloses: string[] = [];
     while (i < text.length) {
         if (text[i] === '$' && text[i + 1] === '{' && text[i + 2] === '#') {
             const openEnd = findBraceBalanced(text, i);
-            const prefix = openEnd >= 0 ? buildSkizoBlockPrefix(text.substring(i + 2, openEnd)) : null;
+            const built = openEnd >= 0 ? buildSkizoBlockPrefix(text.substring(i + 2, openEnd)) : null;
 
-            if (prefix === null) {
+            if (built === null) {
                 result += text[i];
                 i++;
                 continue;
@@ -307,21 +365,21 @@ export function convertSkizoBlockSyntax(text: string): string {
                 // No matching close in this field: the author left the block open
                 // to the end (e.g. an outer "if last message" around whole panels).
                 // Open it and auto-close after the remaining content.
-                result += prefix;
-                pendingCloses++;
+                result += built.open;
+                pendingCloses.push(built.close);
                 i = openEnd + 1;
                 continue;
             }
 
             const body = text.substring(openEnd + 1, close.start);
-            result += prefix + convertSkizoBlockSyntax(body) + '}}';
+            result += built.open + convertSkizoBlockSyntax(body) + built.close;
             i = close.end;
         } else {
             result += text[i];
             i++;
         }
     }
-    return pendingCloses > 0 ? result + '}}'.repeat(pendingCloses) : result;
+    return pendingCloses.length ? result + pendingCloses.reverse().join('') : result;
 }
 
 // ─── Expression Converter ──────────────────────────────────
@@ -430,16 +488,10 @@ function handleIfBlock(
 
                     if (elseText !== null) {
                         const convertedElse = convertCBStoTemplate(elseText);
-                        return {
-                            output: `\${if(${condition}){${convertedBody}}}\${if(not(${condition})){${convertedElse}}}`,
-                            endPos,
-                        };
+                        return { output: emitConditional('if', condition, convertedBody, convertedElse), endPos };
                     }
 
-                    return {
-                        output: `\${if(${condition}){${convertedBody}}}`,
-                        endPos,
-                    };
+                    return { output: emitConditional('if', condition, convertedBody, null), endPos };
                 }
             } else if (tag === '/each' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
@@ -510,10 +562,7 @@ function handleEachBlock(
                     const list = processCondition(listRaw);
                     const convertedBody = convertCBStoTemplate(bodyText);
 
-                    return {
-                        output: `\${each(${list}, '${loopVar}'){${convertedBody}}}`,
-                        endPos,
-                    };
+                    return { output: emitEach(list, loopVar, convertedBody), endPos };
                 }
             } else if (tag === '/if' || tag === '/when' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
@@ -590,16 +639,10 @@ function handleWhenBlock(
 
                     if (elseText !== null) {
                         const convertedElse = convertCBStoTemplate(elseText);
-                        return {
-                            output: `\${when(${whenArgs}){${convertedBody}} else {${convertedElse}}}`,
-                            endPos,
-                        };
+                        return { output: emitConditional('when', whenArgs, convertedBody, convertedElse), endPos };
                     }
 
-                    return {
-                        output: `\${when(${whenArgs}){${convertedBody}}}`,
-                        endPos,
-                    };
+                    return { output: emitConditional('when', whenArgs, convertedBody, null), endPos };
                 }
             } else if (tag === '/if' || tag === '/each' || tag === '/func' || tag === '/escape' || tag === '/pure' || tag === '/puredisplay' || tag === '/') {
                 depth--;
@@ -787,7 +830,7 @@ function handleHashIfBlock(
     const convertedBody = convertCBStoTemplate(bodyRaw);
 
     return {
-        output: `\${if(${condition}){${convertedBody}}}`,
+        output: emitConditional('if', condition, convertedBody, null),
         endPos: endPos + 2 // Skip '#}'
     };
 }

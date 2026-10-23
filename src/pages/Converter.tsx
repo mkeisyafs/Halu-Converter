@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { parseCharacterFile } from '../utils/charxParser';
 import { buildZipFile } from '../utils/zipWriter';
+import { setBlockOutputStyle } from '../utils/cbsConverter';
 import type { CharacterData } from '../utils/types';
 
 type Stage = 'idle' | 'parsing' | 'converting' | 'ready';
@@ -34,6 +35,7 @@ export default function Converter() {
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<CharacterData | null>(null);
   const [zipBlob, setZipBlob] = useState<Blob | null>(null);
+  const [blockStyle, setBlockStyle] = useState<'block' | 'brace'>('block');
 
   useEffect(() => {
     return () => {
@@ -72,6 +74,7 @@ export default function Converter() {
   const handleConvert = useCallback(async () => {
     if (!file) return;
     setError(null);
+    setBlockOutputStyle(blockStyle);
 
     try {
       setStage('parsing');
@@ -102,7 +105,7 @@ export default function Converter() {
       setError(err instanceof Error ? err.message : 'Conversion failed.');
       setStage('idle');
     }
-  }, [file]);
+  }, [file, blockStyle]);
 
   const handleDownload = useCallback(() => {
     if (!zipBlob || !parsed) return;
@@ -272,6 +275,35 @@ export default function Converter() {
             {parsed && !isProcessing && (
               <ParsedSummary data={parsed} zipSize={zipBlob?.size ?? 0} />
             )}
+
+            <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-white/80">Block syntax</p>
+                <p className="truncate text-[11px] text-white/40">
+                  {blockStyle === 'block'
+                    ? "Readable tags — ${when(…)} … ${/when}"
+                    : 'Compact braces — ${when(…){ … }}'}
+                </p>
+              </div>
+              <div className="flex flex-shrink-0 rounded-lg border border-white/10 bg-ink-900/60 p-0.5">
+                {(['block', 'brace'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => setBlockStyle(s)}
+                    className={[
+                      'rounded-md px-2.5 py-1 text-[11px] font-medium transition disabled:opacity-40',
+                      blockStyle === s
+                        ? 'bg-white/10 text-white'
+                        : 'text-white/50 hover:text-white/80',
+                    ].join(' ')}
+                  >
+                    {s === 'block' ? 'Readable' : 'Compact'}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               {stage === 'idle' && (
